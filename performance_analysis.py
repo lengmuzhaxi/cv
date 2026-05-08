@@ -6,21 +6,23 @@ import os
 from matplotlib.font_manager import FontProperties
 
 def analyze_performance():
-    print("--- 开始执行算法性能横向对比分析 (含中文信息版) ---")
-    
     image_names = ['kodim08.png', 'kodim19.png', 'kodim20.png', 'kodim21.png', 'kodim22.png', 'kodim24.png']
     student_info = "学号: 230162402007 姓名: 巩怡"
     
-    # 加载中文字体
+    # 加载中文字体 
     my_font = FontProperties(fname='/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc')
     
+    # 扩展字典，增加 ORB
     metrics = {
         'SIFT': {'time': [], 'count': []},
         'Harris': {'time': [], 'count': []},
-        'KLT': {'time': [], 'count': []}
+        'KLT': {'time': [], 'count': []},
+        'ORB': {'time': [], 'count': []}
     }
 
+    # 初始化检测器
     sift = cv2.SIFT_create()
+    orb = cv2.ORB_create(nfeatures=1000) # 设定最大特征点数为 1000 以便公平对比
 
     for img_name in image_names:
         if not os.path.exists(img_name):
@@ -32,61 +34,61 @@ def analyze_performance():
         gray_float32 = np.float32(gray)
 
         # 测试 1: SIFT
-        start_time = time.time()
-        keypoints, _ = sift.detectAndCompute(gray, None)
-        end_time = time.time()
-        metrics['SIFT']['time'].append((end_time - start_time) * 1000)
-        metrics['SIFT']['count'].append(len(keypoints))
+        t1 = time.time()
+        kp_sift, _ = sift.detectAndCompute(gray, None)
+        metrics['SIFT']['time'].append((time.time() - t1) * 1000)
+        metrics['SIFT']['count'].append(len(kp_sift))
 
         # 测试 2: Harris
-        start_time = time.time()
+        t2 = time.time()
         dst = cv2.cornerHarris(gray_float32, 2, 3, 0.04)
-        harris_count = np.sum(dst > 0.01 * dst.max())
-        end_time = time.time()
-        metrics['Harris']['time'].append((end_time - start_time) * 1000)
-        metrics['Harris']['count'].append(harris_count)
+        h_count = np.sum(dst > 0.01 * dst.max())
+        metrics['Harris']['time'].append((time.time() - t2) * 1000)
+        metrics['Harris']['count'].append(h_count)
 
-        # 测试 3: KLT
-        start_time = time.time()
+        # 测试 3: KLT (Shi-Tomasi)
+        t3 = time.time()
         corners = cv2.goodFeaturesToTrack(gray, maxCorners=1000, qualityLevel=0.01, minDistance=10)
-        klt_count = len(corners) if corners is not None else 0
-        end_time = time.time()
-        metrics['KLT']['time'].append((end_time - start_time) * 1000)
-        metrics['KLT']['count'].append(klt_count)
+        k_count = len(corners) if corners is not None else 0
+        metrics['KLT']['time'].append((time.time() - t3) * 1000)
+        metrics['KLT']['count'].append(k_count)
 
-    algorithms = ['SIFT', 'Harris', 'KLT (Shi-Tomasi)']
-    avg_times = [np.mean(metrics['SIFT']['time']), np.mean(metrics['Harris']['time']), np.mean(metrics['KLT']['time'])]
-    avg_counts = [np.mean(metrics['SIFT']['count']), np.mean(metrics['Harris']['count']), np.mean(metrics['KLT']['count'])]
+        # 测试 4: ORB (新增)
+        t4 = time.time()
+        kp_orb, _ = orb.detectAndCompute(gray, None)
+        metrics['ORB']['time'].append((time.time() - t4) * 1000)
+        metrics['ORB']['count'].append(len(kp_orb))
 
-    # 打印文字版数据总结
-    print("\n【性能分析总结 (所有图片的平均值)】")
+    algorithms = ['SIFT', 'Harris', 'KLT', 'ORB']
+    avg_times = [np.mean(metrics[a]['time']) for a in algorithms]
+    avg_counts = [np.mean(metrics[a]['count']) for a in algorithms]
+
+    # 打印总结
+    print("\n【Benchmark 性能总结】")
     for i, algo in enumerate(algorithms):
-        print(f"{algo:>16}: 平均耗时 {avg_times[i]:.2f} ms | 平均检测到 {avg_counts[i]:.0f} 个特征点")
+        print(f"{algo:>8}: {avg_times[i]:>6.2f} ms | {avg_counts[i]:>5.0f} pts")
 
-    # 绘制性能对比图表
-    # 增加 figsize 的高度（从 5 改为 6），为底部文字留出空间
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+    # 绘图
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    colors = ['#4C72B0', '#55A868', '#C44E52', '#8172B3']
 
-    # 子图 1：处理时间对比
-    bars1 = ax1.bar(algorithms, avg_times, color=['#4C72B0', '#55A868', '#C44E52'])
-    ax1.set_title('Average Execution Time (Lower is Faster)')
-    ax1.set_ylabel('Time (ms)')
+    # 时间对比
+    bars1 = ax1.bar(algorithms, avg_times, color=colors)
+    ax1.set_title('Avg Time (ms) - Lower is Faster')
     for bar in bars1:
-        yval = bar.get_height()
-        ax1.text(bar.get_x() + bar.get_width()/2, yval + 1, round(yval, 1), ha='center', va='bottom')
+        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height(), f'{bar.get_height():.1f}', ha='center', va='bottom')
 
-    # 子图 2：特征点数量对比
-    bars2 = ax2.bar(algorithms, avg_counts, color=['#4C72B0', '#55A868', '#C44E52'])
-    ax2.set_title('Average Number of Keypoints Detected')
-    ax2.set_ylabel('Count')
+    # 数量对比
+    bars2 = ax2.bar(algorithms, avg_counts, color=colors)
+    ax2.set_title('Avg Keypoints Detected')
     for bar in bars2:
-        yval = bar.get_height()
-        ax2.text(bar.get_x() + bar.get_width()/2, yval + 1, round(yval, 0), ha='center', va='bottom')
-    fig.text(0.5, 0.02, student_info, ha='center', fontsize=14, fontproperties=my_font)
+        ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height(), f'{int(bar.get_height())}', ha='center', va='bottom')
 
-    plt.tight_layout(rect=[0, 0.05, 1, 1]) # 调整布局，防止底部文字被切掉
-    plt.savefig('Algorithm_Performance_Comparison_with_ID.png', bbox_inches='tight', dpi=150)
-    print(f"性能分析对比图已保存为：Algorithm_Performance_Comparison_with_ID.png")
+    # 添加页脚信息
+    fig.text(0.5, 0.02, student_info, ha='center', fontsize=12, fontproperties=my_font)
+
+    plt.tight_layout(rect=[0, 0.05, 1, 1])
+    plt.savefig('Full_Algorithm_Benchmark.png', bbox_inches='tight', dpi=150)
     plt.show()
 
 if __name__ == "__main__":
